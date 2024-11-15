@@ -1,0 +1,372 @@
+# -*- coding: utf-8 -*-
+"""
+@author: Teppei Hosoya
+"""
+import itertools
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import math
+
+alpha_values = [0, 1, 2, 3, 4, 5]
+beta_values = [0, 1, 2, 3, 4, 5]
+gamma_values = [0, 1, 2, 3, 4, 5]
+wage_rate = 1000  # Hourly wage（Yen）
+
+# --- Crop Data ---
+crop_data = {
+    1: {"Crop Name": "Lettuce (Spring)", "Family": "Asteraceae", "Sowing Month": 3, "Harvest Month": 5, "Sowing Time": 0.03, "Thinning & Maintenance Time": 0.05, "Weeding & Pest Control Time": 0.1, "Harvest Time": 0.05, "Yield": 2.6, "Market Price": 109, "Base Pest Control Cost": 15.8571013672572},
+    2: {"Crop Name": "Chinese Cabbage (Autumn)", "Family": "Brassicaceae", "Sowing Month": 8, "Harvest Month": 11, "Sowing Time": 0.04, "Thinning & Maintenance Time": 0.06, "Weeding & Pest Control Time": 0.12, "Harvest Time": 0.075, "Yield": 4, "Market Price": 100, "Base Pest Control Cost": 26.0309284878499},
+    3: {"Crop Name": "Broccoli (Autumn)", "Family": "Brassicaceae", "Sowing Month": 8, "Harvest Month": 11, "Sowing Time": 0.04, "Thinning & Maintenance Time": 0.07, "Weeding & Pest Control Time": 0.12, "Harvest Time": 0.07, "Yield": 1.9, "Market Price": 460, "Base Pest Control Cost": 57.9859486021813},
+    4: {"Crop Name": "Chives (Spring)", "Family": "Amaryllidaceae", "Sowing Month": 3, "Harvest Month": 7, "Sowing Time": 0.025, "Thinning & Maintenance Time": 0.04, "Weeding & Pest Control Time": 0.08, "Harvest Time": 0.15, "Yield": 2, "Market Price": 778, "Base Pest Control Cost": 86.0094876394791},
+    5: {"Crop Name": "Pumpkin (Spring)", "Family": "Cucurbitaceae", "Sowing Month": 4, "Harvest Month": 7, "Sowing Time": 0.03, "Thinning & Maintenance Time": 0.05, "Weeding & Pest Control Time": 0.1, "Harvest Time": 0.065, "Yield": 2.2, "Market Price": 181, "Base Pest Control Cost": 9.63034262451616},
+    6: {"Crop Name": "Spinach (Spring)", "Family": "Amaranthaceae", "Sowing Month": 3, "Harvest Month": 5, "Sowing Time": 0.03, "Thinning & Maintenance Time": 0.05, "Weeding & Pest Control Time": 0.08, "Harvest Time": 0.05, "Yield": 2.5, "Market Price": 475, "Base Pest Control Cost": 70.5308017476449},
+    7: {"Crop Name": "Tomato (Spring)", "Family": "Solceae", "Sowing Month": 4, "Harvest Month": 7, "Sowing Time": 0.04, "Thinning & Maintenance Time": 0.06, "Weeding & Pest Control Time": 0.13, "Harvest Time": 0.08, "Yield": 3.5, "Market Price": 354, "Base Pest Control Cost": 70.8712737336333},
+    8: {"Crop Name": "Leaf Lettuce (Spring)", "Family": "Asteraceae", "Sowing Month": 3, "Harvest Month": 5, "Sowing Time": 0.03, "Thinning & Maintenance Time": 0.05, "Weeding & Pest Control Time": 0.1, "Harvest Time": 0.05, "Yield": 2.5, "Market Price": 225, "Base Pest Control Cost": 25.0215522166143},
+    9: {"Crop Name": "Cherry Tomato (Spring)", "Family": "Solceae", "Sowing Month": 4, "Harvest Month": 7, "Sowing Time": 0.035, "Thinning & Maintenance Time": 0.05, "Weeding & Pest Control Time": 0.12, "Harvest Time": 0.07, "Yield": 3.8, "Market Price": 450, "Base Pest Control Cost": 9.73813766665427},
+    10: {"Crop Name": "Lettuce (Autumn)", "Family": "Asteraceae", "Sowing Month": 9, "Harvest Month": 11, "Sowing Time": 0.03, "Thinning & Maintenance Time": 0.05, "Weeding & Pest Control Time": 0.1, "Harvest Time": 0.05, "Yield": 2.8, "Market Price": 183, "Base Pest Control Cost": 31.3641721235877},
+    11: {"Crop Name": "Spinach (Autumn)", "Family": "Amaranthaceae", "Sowing Month": 9, "Harvest Month": 11, "Sowing Time": 0.025, "Thinning & Maintenance Time": 0.04, "Weeding & Pest Control Time": 0.07, "Harvest Time": 0.045, "Yield": 2.8, "Market Price": 486, "Base Pest Control Cost": 71.4967878579683},
+    12: {"Crop Name": "Bitter Gourd (Spring)", "Family": "Cucurbitaceae", "Sowing Month": 5, "Harvest Month": 8, "Sowing Time": 0.03, "Thinning & Maintenance Time": 0.04, "Weeding & Pest Control Time": 0.09, "Harvest Time": 0.06, "Yield": 2.4, "Market Price": 420, "Base Pest Control Cost": 29.8124071603121},
+}
+
+# --- Crop Rotation Compatibility Matrix ---
+rotation_compatibility = {
+    "Amaranthaceae": {"Amaranthaceae": False, "Brassicaceae": True, "Cucurbitaceae": True, "Asteraceae": True, "Solanaceae": False, "Amaryllidaceae": True},
+    "Brassicaceae": {"Amaranthaceae": True, "Brassicaceae": False, "Cucurbitaceae": True, "Asteraceae": True, "Solanaceae": True, "Amaryllidaceae": False},
+    "Cucurbitaceae": {"Amaranthaceae": True, "Brassicaceae": True, "Cucurbitaceae": False, "Asteraceae": True, "Solanaceae": False, "Amaryllidaceae": True},
+    "Asteraceae": {"Amaranthaceae": True, "Brassicaceae": True, "Cucurbitaceae": True, "Asteraceae": False, "Solanaceae": True, "Amaryllidaceae": False},
+    "Solanaceae": {"Amaranthaceae": False, "Brassicaceae": True, "Cucurbitaceae": False, "Asteraceae": True, "Solanaceae": False, "Amaryllidaceae": True},
+    "Amaryllidaceae": {"Amaranthaceae": True, "Brassicaceae": False, "Cucurbitaceae": True, "Asteraceae": False, "Solanaceae": True, "Amaryllidaceae": False},
+}
+
+# --- Pest Control Cost Reduction Data ---
+cost_reduction_data = [
+    {"Crop": "Lettuce (Autumn)", "Combination Crop": "Chinese Cabbage (Autumn)", "Reduction Rate": 7},
+    {"Crop": "Broccoli (Autumn)", "Combination Crop": "Lettuce (Autumn)", "Reduction Rate": 36},
+    {"Crop": "Spinach (Autumn)", "Combination Crop": "Broccoli (Autumn)", "Reduction Rate": 10},
+    {"Crop": "Spinach (Autumn)", "Combination Crop": "Chinese Cabbage (Autumn)", "Reduction Rate": 39},
+    {"Crop": "Pumpkin (Spring)", "Combination Crop": "Eggplant (Spring)", "Reduction Rate": 10},
+    {"Crop": "Pumpkin (Spring)", "Combination Crop": "Lettuce (Spring)", "Reduction Rate": 21},
+    {"Crop": "Cherry Tomato (Spring)", "Combination Crop": "Garlic Chives (Spring)", "Reduction Rate": 29},
+    {"Crop": "Tomato (Spring)", "Combination Crop": "Garlic Chives (Spring)", "Reduction Rate": 18},
+]
+
+
+# --- Plan Generation Function ---
+def generate_chains(crop_id, chain=(), chains=set(), occupied_months=set()):
+    crop = crop_data[crop_id]
+    chain = chain + (crop_id,)
+    start_month, end_month = crop["Sowing Month"], crop["Harvest Month"]
+
+    # Continuous cropping check
+    if len(chain) > 1:
+        prev_crop = crop_data[chain[-2]]
+        if not rotation_compatibility[prev_crop["Family"]][crop["Family"]]:
+            return chains
+
+    # Check for overlapping cultivation periods
+    for month in range(start_month, end_month + 1):
+        if month in occupied_months:
+            return chains
+
+    occupied_months.update(range(start_month, end_month + 1))
+    chains.add(chain)
+
+    # Recursively add next crops
+    next_crops = [cid for cid in crop_data if cid != crop_id and crop_data[cid]["Sowing Month"] > end_month]
+    for next_crop_id in next_crops:
+        generate_chains(next_crop_id, chain, chains, occupied_months)
+
+    # Reset cultivation period
+    for month in range(start_month, end_month + 1):
+        occupied_months.discard(month)
+
+    return chains
+
+# --- Filter Single Crop Chains ---
+def filter_single_crop_chains(chains):
+    filtered = {chain for chain in chains if len(chain) > 1}
+    return filtered
+
+# --- Labor Cost Calculation ---
+def calculate_labor_cost(chain):
+    """
+    Function to calculate labor cost and labor variance, also returning a list of labor hours for each month.
+    """
+    total_workload = [0] * 12  # Stores labor hours for each month
+    for crop_id in chain:
+        crop = crop_data[crop_id]
+        start_month, end_month = crop["Sowing Month"], crop["Harvest Month"]
+
+        # Distribute thinning & maintenance + weeding time evenly across the cultivation period
+        monthly_maintenance = (crop["Thinning & Maintenance Time"] + crop["Weeding & Pest Control Time"]) / (end_month - start_month + 1)
+        for month in range(12):
+            if start_month <= month + 1 <= end_month:
+                total_workload[month] += monthly_maintenance
+                if month + 1 == start_month:
+                    total_workload[month] += crop["Sowing Time"]
+                elif month + 1 == end_month:
+                    total_workload[month] += crop["Harvest Time"]
+
+    # Calculate labor variance and cost
+    labor_variance = np.var(total_workload)
+    labor_cost = sum(total_workload) * wage_rate
+    return labor_cost, labor_variance, total_workload
+
+def calculate_reduced_cost_v8(portfolio):
+    """
+    Function to calculate pest control cost reduction based on the relationship between the target crop and the combination crop, ensuring no duplication.
+    """
+    # Calculate the total base pest control cost for each crop
+    base_cost_by_crop = {}
+    total_base_cost = 0
+    for chain in portfolio:
+        for crop_id in chain:
+            crop_name = crop_data[crop_id]["Crop Name"]
+            cost = crop_data[crop_id]["Base Pest Control Cost"]
+            base_cost_by_crop[crop_name] = base_cost_by_crop.get(crop_name, 0) + cost
+            total_base_cost += cost
+
+    total_reduction = 0
+    used_pairs = set()  # Record combinations where the reduction effect has already been applied
+
+    # Process each target crop one by one
+    for chain in portfolio:
+        for crop_id1 in chain:
+            target_crop = crop_data[crop_id1]["Crop Name"]
+
+            # Search for combination crops for the target crop
+            potential_reduction = 0
+            for chain2 in portfolio:
+                if chain == chain2:
+                    continue
+                for crop_id2 in chain2:
+                    combo_crop = crop_data[crop_id2]["Crop Name"]
+                    pair = (target_crop, combo_crop)
+                    
+                    # Skip if the combination has already been applied
+                    if pair in used_pairs:
+                        continue
+
+                    # Obtain the reduction rate (considering the directionality between the target crop and combination crop)
+                    reduction_rate = next(
+                        (item["Reduction Rate"] for item in cost_reduction_data
+                         if item["Crop"] == target_crop and item["Combination Crop"] == combo_crop),
+                        0
+                    )
+
+                    if reduction_rate > 0:
+                        # Calculate the reduction effect
+                        reduction_amount = base_cost_by_crop.get(target_crop, 0) * (reduction_rate / 100)
+                        potential_reduction += reduction_amount
+                        used_pairs.add(pair)  # Mark as applied
+
+            # Sum up the reduction effect for each target crop
+            total_reduction += potential_reduction
+
+    # Calculate the total pest control cost
+    total_pest_control_cost = total_base_cost - total_reduction
+    return total_pest_control_cost
+
+
+
+# --- Evaluation Function ---
+def evaluate_portfolio(chains, alpha=1.0, beta=10000, gamma=1000, field_count=4):
+    max_score = -np.inf
+    best_combination = None
+    best_adjusted_profit = None
+    
+    for combination in itertools.combinations_with_replacement(chains, field_count):
+        unique_crops = set()
+        
+        # Add crops within each chain to the set to measure diversity
+        for chain in combination:
+            for crop_id in chain:
+                unique_crops.add(crop_id)
+            
+        # --- Calculate Diversity Penalty ---
+        # The penalty decreases exponentially as the diversity of crops increases
+        diversity_penalty = math.exp(-0.5 * len(unique_crops))
+        
+        total_profit = 0
+        total_labor_cost = 0
+        total_labor_variance = 0
+        total_workload_portfolio = [0] * 12
+  
+        # Calculate labor time and profit for each chain
+        for chain in combination:
+            labor_cost, labor_var, chain_workload = calculate_labor_cost(chain)
+            total_labor_cost += labor_cost
+
+            # Sum the labor hours for each month
+            for month in range(12):
+                total_workload_portfolio[month] += chain_workload[month]
+
+            # Calculate profit for each chain
+            for crop_id in chain:
+                crop = crop_data[crop_id]
+                total_profit += crop["Yield"] * crop["Market Price"]
+            
+        # Calculate the variance of labor hours across all plots
+        total_labor_variance = np.var(total_workload_portfolio)
+        
+        # Calculate the total pest control cost, taking into account reduction effects
+        total_pest_control_cost = calculate_reduced_cost_v8(combination)
+        
+        # Calculate adjusted profit (including base pest control costs)
+        adjusted_profit = total_profit - (total_labor_cost + total_pest_control_cost)
+        
+        # Scale the parameters
+        scaled_alpha = alpha / 9137.17
+        scaled_beta = beta / 0.04
+        scaled_gamma = gamma / 0.37
+        
+        # Calculate the score
+        score = (scaled_alpha * adjusted_profit) / (scaled_beta * total_labor_variance + scaled_gamma * diversity_penalty + 1)
+        
+        if score > max_score:
+            max_score = score
+            best_combination = combination
+            best_adjusted_profit = adjusted_profit
+            best_diversity_penalty = diversity_penalty
+            best_labor_variance = total_labor_variance
+            
+    return best_combination, max_score, best_adjusted_profit, best_labor_variance, best_diversity_penalty
+
+# --- Evaluate Best Portfolio ---
+def evaluate_best_portfolio(chains, alpha, beta, gamma):
+    """
+    Evaluate the portfolio with the best parameter settings and find the optimal combination.
+    """
+    best_combination, max_score, best_adjusted_profit, best_labor_variance, best_diversity_penalty = evaluate_portfolio(
+        chains, alpha, beta, gamma)
+    
+    print("\nOptimal Portfolio:")
+    print(f"Score: {max_score}")
+    print(f"Adjusted Profit: {best_adjusted_profit}")
+    print(f"Labor Variance: {best_labor_variance}")
+    print(f"Diversity Penalty: {best_diversity_penalty}")
+    
+    print("Best Combination:")
+    for chain in best_combination:
+        print([crop_data[crop_id]['Crop Name'] for crop_id in chain])
+    
+    return best_combination
+
+# --- Sensitivity Analysis ---
+def sensitivity_analysis(chains, alpha_values, beta_values, gamma_values):
+    results = []
+    total_combinations = len(alpha_values) * len(beta_values) * len(gamma_values)
+    with tqdm(total=total_combinations, desc="Performing Sensitivity Analysis") as pbar:
+        for alpha in alpha_values:
+            for beta in beta_values:
+                for gamma in gamma_values:
+                    best_combination, max_score, best_adjusted_profit, best_labor_variance, best_diversity_penalty = evaluate_portfolio(
+                        chains, alpha, beta, gamma)
+                    
+                    results.append({
+                        "alpha": alpha,
+                        "beta": beta,
+                        "gamma": gamma,
+                        "score": max_score,
+                        "adjusted_profit": best_adjusted_profit,
+                        "labor_variance": best_labor_variance,
+                        "diversity_penalty": best_diversity_penalty,
+                        "best_combination": best_combination
+                    })
+                    pbar.update(1)
+
+    return pd.DataFrame(results)
+
+def find_best_params(df):
+    """
+    Function to find the optimal parameters (alpha, beta, gamma) based on the results of the sensitivity analysis.
+    """
+    # Get the row with the maximum score
+    best_row = df.loc[df['score'].idxmax()]
+    
+    best_alpha = best_row['alpha']
+    best_beta = best_row['beta']
+    best_gamma = best_row['gamma']
+    best_score = best_row['score']
+    
+    print(f"Optimal Parameters: Alpha={best_alpha}, Beta={best_beta}, Gamma={best_gamma}, Score={best_score}")
+    return best_alpha, best_beta, best_gamma
+
+# --- Plotting Function ---
+def plot_sensitivity_analysis(df):
+    plt.figure(figsize=(12, 6))
+    
+    # Alpha vs Score
+    for beta in df['beta'].unique():
+        for gamma in df['gamma'].unique():
+            subset = df[(df['beta'] == beta) & (df['gamma'] == gamma)]
+            plt.plot(subset['alpha'], subset['score'], label=f'Beta={beta}, Gamma={gamma}')
+    
+    plt.title("Alpha vs Score")
+    plt.xlabel("Alpha")
+    plt.ylabel("Score")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+
+    plt.grid(True)
+    plt.show()
+
+    # Beta vs Score
+    plt.figure(figsize=(12, 6))
+    for alpha in df['alpha'].unique():
+        for gamma in df['gamma'].unique():
+            subset = df[(df['alpha'] == alpha) & (df['gamma'] == gamma)]
+            plt.plot(subset['beta'], subset['score'], label=f'Alpha={alpha}, Gamma={gamma}')
+    
+    plt.title("Beta vs Score")
+    plt.xlabel("Beta")
+    plt.ylabel("Score")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+    plt.grid(True)
+    plt.show()
+
+    # Gamma vs Score
+    plt.figure(figsize=(12, 6))
+    for alpha in df['alpha'].unique():
+        for beta in df['beta'].unique():
+            subset = df[(df['alpha'] == alpha) & (df['beta'] == beta)]
+            plt.plot(subset['gamma'], subset['score'], label=f'Alpha={alpha}, Beta={beta}')
+    
+    plt.title("Gamma vs Score")
+    plt.xlabel("Gamma")
+    plt.ylabel("Score")
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0)
+
+    plt.grid(True)
+    plt.show()
+
+# --- Main Processing ---
+if __name__ == "__main__":
+    # --- Step 1: Generate Chains ---
+    all_chains = set()
+    for crop_id in crop_data.keys():
+        # Generate chains starting with each crop
+        generated_chains = generate_chains(crop_id)
+        all_chains.update(generated_chains)
+
+    # --- Step 2: Filter Out Single-Crop Chains ---
+    filtered_chains = filter_single_crop_chains(all_chains)
+
+    print(f"Number of generated chains: {len(filtered_chains)}")
+    
+    # --- Step 3: Perform Sensitivity Analysis ---
+    df_results = sensitivity_analysis(filtered_chains, alpha_values, beta_values, gamma_values)
+
+    # Output the results of the sensitivity analysis
+    print("\nResults of Sensitivity Analysis:")
+    print(df_results.to_string())
+
+    # Plot the graphs
+    plot_sensitivity_analysis(df_results)
+
+    # --- Step 4: Find the Optimal Parameter Settings ---
+    best_alpha, best_beta, best_gamma = find_best_params(df_results)
+
+    # --- Step 5: Evaluate the Portfolio with the Optimal Parameters ---
+    best_portfolio = evaluate_best_portfolio(filtered_chains, best_alpha, best_beta, best_gamma)
